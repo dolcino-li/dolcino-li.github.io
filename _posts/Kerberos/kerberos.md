@@ -1,0 +1,258 @@
+# Kerberos
+
+最近完成了一个从 Windows Active Directory 到 MIT kerberos 迁移的项目，里面涉及到 kerberos 的一些相关的内容，在这里总结一下。
+
+---
+
+## Origin of Kerberos
+
+> reference: http://web.mit.edu/kerberos/dialogue.html
+
+[ --- Scene I --- ]
+
+在一开始，所有人都是通过某一台机器去登录 remote machine 来工作，但是由于没有认证系统，所以经常在小明完成一项工作之后，他的file 又会被其他人修改，导致小明有需要重新修改他的 file。于是他决定开发一个登录认证的系统。
+
+为了简化，小明的目标简化成，让 mail server 能够完成身份认证，当小明登录的时候，小明只能看到自己的 mail，看不到别人的 mail。
+
+小明最直接的想法就是，设置一个只有自己知道的密码，在访问 mail server 的时候，需要向mail server 输入密码。这样就可以确定是小明在登录了。
+
+这里面有两个问题，
+- 所有的 server 都需要有所有 user 的密码，这样才可以做认证。
+- 密码都是明文传输的，如果小黑截获了小明的密码。小黑就可以假装是小明去获取小明的 mail。
+
+[ --- Scene II --- ]
+
+为了解决第一个问题，每一个 server 都需要有所有 user 密码，小明建了一个 data center，并给这个 data center 取名为 kerberos。所以 kerberos data centor 简称为 KDC。在 KDC 里有所有 user 的密码。
+
+如果小明想要使用 mail server，他必须向 KDC 证明他就是小明本人。
+
+为了证明，小明是他本人，小明可以先发送他的 password 给 KDC，KDC在数据库用 user name 和 password 做匹配，如果匹配成功则可以认为，小明向 KDC 证明了他就是小明本人。
+
+KDC 这个时候可以把 mail server 的 password 给小明(mail server 也是一个用户，也有一个独立的password)，这样小明就可以把 mail server 的 password 给 mail server，以此来证明，他已经向 KDC 证明过，他真的是小明（所以 KDC 才把 mail server 的 password 给他）。但是如果这样做的话，小明就知道了 mail server 的 password，下次访问 mail server 的时候就可以绕开 KDC，所以不可以这样做。
+
+KDC 给小明一个叫 Ticket 的东西，ticket 里包含了小明的用户名，和小明想要访问的 server 的名字（mail server), 并且用 mail server 的 password 进行加密。这样小明就没有办法解密知道内容。当小明把 Ticket 给 mail server 的时候，mail server 可以直接用它的密码解密，知道了现在正在访问的用户是小明。（Ticket 里有 mail server 的地址是为了验证解密的正确性，不然解密是否正确无从得知，即 mail server 解密之后，拿 ticket 的地址和自己的地址作对比）。
+
+但是，如果小黑在 KDC 返回 Ticket 给 小明的时候，拦截了 Ticket，那么小黑也可以用 Ticket 来使用 mail server，这样小黑也可以看小明的 mail。所以在 Ticket 里加入了 Network Address (IP).
+
+这里有几个问题。
+- Ticket 虽然可以 reuse，但是在第一步，还是需要发送明文密码给 KDC，非常危险。
+- Ticket 是和某一个 server 高度相关的。例如使用 mail server / printer server 都需要输入密码，还是会输入很多次密码。
+
+[ --- Scene III --- ]
+
+对于 Ticket 是和某一个 server 高度相关的这个问题，小明提出了新的想法。
+
+小明设计了一个单独的服务，叫做 ticket-granting server，这个服务的作用只是用来证明，是小明本人在操作，不是别人。ticket-granting server 就给小明一个 ticket，小明再访问 mail server 的时候，就可以用 ticket-granting ticket 给 KDC，来拿到 mail-server ticket，这样就可以只用 ticket-granting ticket 来访问其他所有 server，而不需要反复输入密码。
+
+对于 ticket 的第一步仍然需要明文输入的这个问题，小明提出了新的策略。
+
+因为小明 和 KDC 都是知道小明的密码的，所以小明想到，可以在给 KDC 的第一条 message 里只写自己的名字。KDC 在收到带着小明名字信息的 message 之后，准备好 ticket-granting ticket, 并且用小明的密码加密，返回给小明。此时小明再输入密码，用来解密。如果是小黑用了小明的用户名，由于不知道小明的密码，所以无法解密小明的 ticket-granting server。
+
+这样就解决了密码明文传输的问题。
+
+此时又有了新的问题。如果小黑现在在网上，把刚才所有的这些 ticket 都收集起来，等到小明 log out 之后，立刻登录小明刚才的机器，然后使用 mail-server ticket 就可以用小明的身份访问 mail server。(这种攻击方式叫 replay attack).
+
+在 ticket 里加入 assign 这个 ticket 的 timestamp 和 这个 ticket 的 lifespan 等信息，可以在一定程度上防止 replay attrack。(但是并不能完全防止)。
+
+[ --- Scene IV --- ]
+
+为了解决 replay attrack 的问题，小明想到的解决办法就是，让 mail server 知道，这条消息之前已经收到了。ticket 本身是可以 reuse的，但是可以在 ticket 里加一个 Authenticator，这个 Authenticator 只能单次使用，每当 mail server 收到一个 Authenticator 之后，就可以加入到一个列表里，收到下一个 Authenticator 之后，在列表里查看，如果这个 Authenticator 已经出现过，那么证明这条消息是重复的，这样就可以避免 replay attrack。
+
+讨论了这么多之后，小明认为这个服务已经可以上线了。但是他又突然想到一个问题，就是 小明之前假设的攻击，都是类似小黑那样，从网络上进行攻击，却从来没有想过 mail server 本身就可能是一个 bad server。Mail server 在收到小明的 mail-server ticket 之后，并不对这个mail-server ticket 解密，而是直接返回一个伪造的 mail，此时小明并没有办法进行分辨。
+
+为了解决这个问题的关键，是需要让 mail-server 也要向 小明证明它是真正的 mail server。小明想到的办法是，当 KDC 返回给 小明 mail-server ticket 的时候，在 mail-server ticket 里加入一个新的变量，叫 session-key，并且把这个 session-key 告诉小明。
+
+当小明发送 mail-server ticket 给 mail-server 的时候，并不会把这个 session-key 告诉 mail server，mail server 收到 mail-server ticket 的时候，必须使用 mail server 的密码解密，读取到 session-key 并把这个 session-key 返回给小明，以此来证明，mail-server 真的解开了 ticket。
+
+
+总结一下：
+- session-key: 解决了 fake server 的问题。
+- Authenticator: 解决了 replay attack 的问题。
+- Ticket 里加入 IP / ticket timestamp lifespan / Username / server name: 解决了在网络中被拦截的问题。
+- 用 User password 加密 ticket 返回给用户: 解决了 用户密码明文传输的问题。
+
+## Principle of Kerberos
+
+> Reference: https://www.roguelynn.com/words/explain-like-im-5-kerberos/
+
+Kerberos 的具体的流程如下:
+
+1> Client  ------> Authentication Server
+
+Send: 
+- UserName / IP address / Ticket Granting Server Address / lifeTime of Ticket Granting Ticket.
+
+2> Client <------- Authentication Server
+
+Reply: 
+- [ UserName / TGS Address / Current Timestamp / Client IP / lifeTime of TGT / TGS Session Key ] encryped with TGS Secrey key (TGS的密码)。只有 TGS server 可以解密。
+- Ticket Granting Ticket
+    -  [ TGS name / timestamp / lifetime of TGT / TGS Session key ] entryped with Client Secret Key. 只有client可以解密。
+
+3> Client ------> Ticket Granting Server.
+
+Send: 
+- [ Authenticator(UserName / timestamp ] entryped with TGS Session key.
+- Ticket Granting Ticket.
+
+Ticket Granting Server could open Ticket Granting Ticket with his secret key, and then get the TGS Session key.
+
+Then use the TGS Session key to open the Authenticator to avoid replay attrack.
+
+4>  Client <-------- Ticket Granting Server.
+
+Reply:
+- Ticket for HTTP service:
+    - [ UserName / HTTP service IP / client IP address / timestamp / lifetime of ticket / HTTP service Session key ] entrypted with HTTP service secret key. (只有 service 可以用密码打开) 。
+- [ HTTP Service / Timestamp / lifetime /HTTP Service session key ] entryped with TGS Session key. （Client 可以读这条消息）。
+
+5> Client -----> HTTP Service.
+
+Send: 
+- Ticket for HTTP service. 
+- [ Auenticator (Client ID / Timestamp)] entryped with HTTP Service session key.
+
+6> Client <--------- HTTP Service.
+Reply:
+- [ Authenticator (HTTP Server ID / Timestamp) ] entryped with HTTP Server session key. (向 client 验证身份)
+
+## Concept / Commands of MIT KDC server.
+
+介绍一些简单的 concept
+- principal: username/instance@realm
+    - 一个 principal 一般由这三部分组成，username 即用户名，instance即某一台机器的名称，realm 即表示是某一个 KDC。当然也可以没有 instance，只由 username 和 realm 组成 pincipal。
+- Ticket: ticket 是一个文件，在这个文件里保存了用户名和密码，用户可以使用 keytab 来获取 ticket cache.
+- Ticket cache: 是 ticket-ranting ticket，用户可以用 ticket cache 来访问其他的 server。
+
+下面介绍一些简单的 commands:
+- kinit
+    - `kinit -kt ${keytab}  username/instance@realm` --> 获取 ticket cache.  
+- klist
+    - klist 查看当下默认的 ticket cache
+        - Ticket cache 后面是 ticket 的位置。可以用 KRB5CCNAME=${AnotherTicketCacheFilePath} 来改变 default 的 ticket cache 位置。
+            ```
+            root@hostname:~$ klist
+            Ticket cache: FILE:/tmp/krb5cc_13456
+            Default principal: user@EXAMPLE.COM
+            Valid starting     Expires            Service principal
+            02/28/23 17:33:48  03/01/21 03:33:48  krbtgt/EXAMPLE.COM@EXAMPLE.COM
+                renew until 03/01/21 03:33:48
+            ```
+    - `klist -ket ${keytab}` 查看 keytab 里的所有 principal
+
+- kdestory
+    - destory 当前的 ticket cache
+- sclient / sserver
+    - 简单的验证工具。在 一个 server 上启动 sserver 并占用一个端口。在另一个 server 上可以启动一个 sclient 来访问，以此来验证 ticket 的可用性。
+        - `At server side:  sserver -p 12345 -S /etc/keytabs/spnego.service.keytab  -s HTTP`
+        - `At client side: sclient ${hostname} 12345 HTTP`
+- Debug Tips:
+  - 上述命令都是 MIT Kerberos 提供的命令，可以用 `export KRB5_TRACE=/dev/stdout` 来开启 debug log。
+  - 对于 Java Application，可以传入 `-Dsun.security.krb5.debug=true` 来开启 krb5 debug log。
+
+- KDC 搭建：
+  - reference: https://web.mit.edu/kerberos/krb5-devel/doc/admin/install_kdc.html
+  - 按照上述步骤做即可。
+
+
+下面介绍一下简单的 KDC file.
+- Client Side
+  - /etc/krb5.conf
+    - 这个是Client 这边最基础的 配置。里面至少包括了 default realm 是什么，realm 的地址在什么位置。
+    - ```
+        [libdefaults]
+        default_realm = ATHENA.MIT.EDU
+
+        [realms]
+        ATHENA.MIT.EDU = {
+            kdc = kerberos.mit.edu
+            kdc = kerberos-1.mit.edu
+            admin_server = kerberos.mit.edu
+        }
+        ```
+- KDC Side:
+  - kdc.conf:
+    - 这个是 kdc 这边的基本配置，例如 KDC的监听端口是什么。admin operation 操作的端口是什么，支持的 enctype 算法有哪些。
+    - 
+    ```
+    [kdcdefaults]
+    kdc_listen = 88
+    kdc_tcp_listen = 88
+    [realms]
+    ATHENA.MIT.EDU = {
+        kadmind_port = 749
+        max_life = 12h 0m 0s
+        max_renewable_life = 7d 0h 0m 0s
+        master_key_type = aes256-cts
+        supported_enctypes = aes256-cts:normal aes128-cts:normal
+        # If the default location does not suit your setup,
+        # explicitly configure the following values:
+        #    database_name = /var/krb5kdc/principal
+        #    key_stash_file = /var/krb5kdc/.k5.ATHENA.MIT.EDU
+        #    acl_file = /var/krb5kdc/kadm5.acl
+    }
+    [logging]
+    # By default, the KDC and kadmind will log output using
+    # syslog.  You can instead send log output to files like this:
+    kdc = FILE:/var/log/krb5kdc.log
+    admin_server = FILE:/var/log/kadmin.log
+    default = FILE:/var/log/krb5lib.log
+    ```
+  - .k5.TESS.DEV.HADOOP.EBAY.COM
+    - 用来区分不同的 KDC，即便建了相同的 realm，也可以用这个文件区分。
+  - principal
+    - 真正存放 principal 的地方。
+  - principal.ok
+    - 每次做 kprop 的时候，如果成功了，就会新建 principal.ok，所以该文件的创建时间即上次做kprop 的时间。（slave 节点上的文件）
+  - replica_datatrans.${slave}.last_prop
+    - 在 master 节点上，上一次给 ${slave} 节点成功做 kprop 后会创建这个文件。
+
+
+## High Availability Plan.
+
+![HA](HA.png)
+
+High Availability plan
+1. 当有 admin 操作的时候，例如 add/delete principal / change password  / generate keytab 等操作的时候，会直接访问 Master cluster 所在的 cluster。
+2. 在 Master Cluster POD 里有一个 Admin operation server, Admin operation server 和 Master KDC 在同一个 POD 里。在 Admin operation server 收到 admin 操作时候会进行简单的权限检测。通过检测后，会将该 admin 操作传递给 KDC。
+3. Admin server operation 将 admin 操作传递给 Master KDC 的方法是，启动一个 Sub process, 并且监控 stdout 和 stderr。在 subprocess 里运行 `kadmin.local -q ${kadmin operation}` 来进行 KDC 的操作。例如：`kadmin.local -q addprinc user/host@EXAMPLE.COM`
+4. Master KDC 在更新过数据之后，会将 Master KDC 里的数据利用 `kprop` 传递给 Slave KDC. 此时 Slave KDC 就完成了和 master KDC 的主从同步。同步时间即是 master 做 kprop 的时间间隔（实际上是 60s)
+   -  kprop 首选需要在 slave 上启动 kpropd process 用来接收数据。同时也需要修改kpropd.acl 来检测是否有权限做 kprop。
+      -  `kpropd -S -P 2754 -a /var/kerberos/krb5kdc/kpropd.acl`
+   -  在 master 端可以直接使用 kprop 来传输 KDC 的数据。
+      -  `kdb5_util dump /var/kerberos/krb5kdc/replica_datatrans`
+      -  `kprop -f /var/kerberos/krb5kdc/replica_datatrans -P 2754 ${slave}`
+5. 在 client 端使用 kinit 或者 curl --negotiate 的时候，这部分流量会通过 loadbalancer 到达 slave cluster。
+6. 由 slave cluster 来接收这部分请求。
+
+## Cross-realm Authentication & Rolling migration.
+由于做了 KDC migration，所以需要做 KDC 互信。
+> Reference: https://web.mit.edu/kerberos/krb5-1.5/krb5-1.5.4/doc/krb5-admin/Cross_002drealm-Authentication.html
+
+其实做法很简单，只需要在两个 KDC 里分别加入 krbtgt/REALM_ONE.COM@REALM_TWO.COM 和 krbtgt/REALM_TWO.COM@REALM_ONE.COM 即可完成 cross-realm trust。
+
+做完互信之后，可以使用 sserver/sclient 进行验证。
+
+#### Rolling Migration
+前提：
+在 MIT KDC 里，如果在 KDC 的 /etc/krb5.conf 里配置了 domain_realm mapping。则这个配置是全局生效的，即 其他 client 端也可以使用这个 domain_realm mapping。
+> Reference: 
+> - https://datatracker.ietf.org/doc/html/draft-ietf-krb-wg-kerberos-referrals-12#section-8
+> - https://web.mit.edu/kerberos/krb5-1.12/doc/admin/realm_config.html
+
+如此就产生了两种情况。
+1. client 和 server 是同一个 realm。则可以直接信任。
+2. client 和 server 属于不同的 realm。则配置互信，且配置 domain_realm mapping，以此达到信任的目的。
+
+所以 Rolling migration 的步骤就如下：
+1. 所有的 client 的 server 都在同一个 realm 下面。
+2. 更新两个KDC 里的 mapping。将一些机器加入 domain_realm mapping 里。同时，在新的 realm 里为这些机器加入新的 principal，在旧的 realm 里删除这些机器的 principal。即把这些机器迁入到新的 realm。
+3. 由于 cross-realm Authentication, 所以这些 server 依旧可以访问。
+4. 重复步骤2/3直到所有的机器都迁移到新的 realm。
+
+能够这样做的最主要的原因是在 KDC 里配置的 domain_realm mapping 是全局生效的。这个 feature 是由 java sun/security/krb5/internal/CredentialsUtil.java 里的一个参数 PrincipalName.KRB_NT_SRV_HST 控制的。在比较新的 java version 里已经 revert 了。
+
+> Revert Ticket: https://bugs.openjdk.org/browse/JDK-8250582
+
+
+
