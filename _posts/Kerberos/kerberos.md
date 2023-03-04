@@ -1,3 +1,8 @@
+---
+layout: post
+title: kerberos
+---
+
 # Kerberos
 
 最近完成了一个从 Windows Active Directory 到 MIT kerberos 迁移的项目，里面涉及到 kerberos 的一些相关的内容，在这里总结一下。
