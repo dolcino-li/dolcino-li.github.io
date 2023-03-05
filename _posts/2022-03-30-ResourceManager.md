@@ -42,7 +42,7 @@ For this steps, There are several limitation need to be met.
 - Calculate AM Resource Limit: AMLimit = Queue_Capacity * MaxAMPercentage.
   - AMNeed + AMUserd > AMLimit. ---> Reject to be put in OrderingPolicyQueue
 - Calculate User Limit AM
-  - $effectiveUserLimit = Max(userLimit, \frac{1}{ActiveUser + PendingUser})$
+  - effectiveUserLimit $$ = Max(userLimit, \frac{1}{ActiveUser + PendingUser})$$
   - UserAMLimit = Queue_Capacity * effectiveUserLimit * AMPercentage * Factor.
   - UserAMLimit > AMLimit ---> Reject to be put in OrderingPolicyQueue.
 
@@ -62,7 +62,7 @@ If resource requirement is met, then RMAttempt will be moved from PendingOrderin
    - Queue which has access to this node partition go first.
       - If partition is NO_Label, return equal.
       - If QueueA has access, but QueueB not, QueueA go first.
-   - Queue with high priority &  low usage ratio go first. ($usageRation = \frac{usedResource}{QueueGarenteedResource}$)
+   - Queue with high priority &  low usage ratio go first. ($$usageRation = \frac{usedResource}{QueueGarenteedResource}$$)
       - If priority is equal. Queue with Low UsageRatio go first.
       - If priority isn’t equal.
         - If both Queue are under or over guaranteed resource. Queue with high priority go first.  
@@ -91,9 +91,9 @@ If resource requirement is met, then RMAttempt will be moved from PendingOrderin
 - Can assign to this User
   - Calculate User Limit:
     - currentCapacity = consumed < queueCapacity ? queueCapacity : consumed + miniAllocation
-    - userLimit = $max⁡({\frac{currentCapacity}{\#activeUsers}, currentCapacity \times UserLimitPercentage})$
-    - maxUserLimit = $currentCapacity \times UserLimitFactor$
-    - finalUserLimit = $min({userLimit,  maxUserLimit})$
+    - userLimit = $$max⁡({\frac{currentCapacity}{\#activeUsers}, currentCapacity \times UserLimitPercentage})$$
+    - maxUserLimit = $$currentCapacity \times UserLimitFactor$$
+    - finalUserLimit = $$min({userLimit,  maxUserLimit})$$
   - If UserUsed > finalUserLimit --> Can’t assign to this Users.
 
 **How to Avoid useless traverse**
