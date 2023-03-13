@@ -1,3 +1,9 @@
+---
+layout: post
+title: Resource Manager
+---
+
+
 # Resource Manager
 
 Hadoop version is 2.7

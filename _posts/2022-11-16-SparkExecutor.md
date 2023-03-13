@@ -1,3 +1,8 @@
+---
+layout: post
+title: Spark Executor
+---
+
 # Spark Executor Related
 
 这一篇讲解一些 spark 比较基础的内容。主要 force 在 spark-submit 之后，launch driver 和 master 的这个过程，以及后续的一些资源调度的内容。
