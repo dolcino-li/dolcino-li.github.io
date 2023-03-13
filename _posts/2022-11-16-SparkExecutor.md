@@ -353,8 +353,8 @@ org.apache.spark.deploy.yarn.ApplicationMaster#AMEndpoint
     }
 ```
 
-#### CoarseGrainedSchedulerBackend 里的 thread
-**reviveThread**
+### CoarseGrainedSchedulerBackend 里的 thread
+#### reviveThread
 
 reviveThread，这个 thread 的名字是 driver-revive-thread，这个 thread 会定期向 driverEndpoint 发送一个 ReviveOffers 事件。
 ```
@@ -365,7 +365,8 @@ org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend#DriverEndpoint
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
 ```
 
-**SpeculationScheduler Thread**
+#### SpeculationScheduler Thread
+
 speculationScheduler Thread，这个 thread 的名字是 task-scheduler-speculation。
 
 ```
@@ -379,12 +380,13 @@ org.apache.spark.scheduler.TaskSchedulerImpl
 
 这个 thread 的目的主要是，当 75% 的 task 都已经完成了之后，会去检查一下剩下的 task，如果有的 task 远超运行结束的平均时间，会重新跑这个 task。另外，如果启动了 spark.decommission.enable 并且设置了 spark.executor.decommission.killInterval，会判断一下，在 spark executor decommission 结束之前，这个 task 是否能够结束，不能结束的话，就在另外一个 executor 上重跑这个 task。（判断 task 什么时间结束，使用的是已经结束的 task 运行时间的中位数）
 
-**DriverEndpoint**
+#### DriverEndpoint
+
 这个是 driverEndpoint rpc 事件的接收 thread，这里列一下现在要接受的主要事件。
 
 StatusUpdate(更新TaskID的status) / killTask / KillExecutorsOnHost / RemoveExecutor / LaunchedExecutor / RegisterExecutor / StopExecutors / ExecutorDecommissioning
 
-**YarnSchedularEndpoint**
+#### YarnSchedularEndpoint
 
 YarnSchedulerEndpoint 用于转发 CoarseGrainedSchedulerBackend 的一些请求到 amEndpoint.
 
@@ -457,7 +459,7 @@ org.apache.spark.scheduler.cluster.YarnSchedulerBackend#doRequestTotalExecutors
 
 **ExecutorAllocationListener**
 
-org.apache.spark。ExecutorAllocationManager # ExecutorAllocationListener
+org.apache.spark.ExecutorAllocationManager # ExecutorAllocationListener
 
 executorAllocationManager 在启动的时候，在 listenerBus 里加入了 ExecutorAllocationListener ，这样的话，当有一些 spark job 相关的 event 被放到了 listenerBus 上之后，ExecutorAllocationListener 就会收到对应的Event，对于不同的 event 可以做不同的动作。
 
